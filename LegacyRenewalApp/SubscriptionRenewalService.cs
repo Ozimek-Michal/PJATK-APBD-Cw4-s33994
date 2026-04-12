@@ -1,17 +1,29 @@
 using System;
 using LegacyRenewalApp.Interfaces;
 
+//TODO
+// ładnie podzielić kod na odpowiedzialności,
+// poprawić kohezję klas,
+// zmniejszyć coupling,
+// usunąć powtórzenia,
+// wydzielić fragmenty logiki do osobnych klas,
+// rozważyć rozbicie części if-else na interfejsy i implementacje zgodnie z Open/Closed Principle,
+// ograniczyć bezpośrednie zależności przez wprowadzenie abstrakcji i prostego IoC przez wstrzykiwanie zależności,
+
+
 namespace LegacyRenewalApp
 {
     public class SubscriptionRenewalService
     {
         private readonly IBillingGateway _billingGateway;
+        private readonly ICustomerRepository _customerRepository;
 
-        public SubscriptionRenewalService() : this(new LegacyBillingGatewayAdapter()){}
+        public SubscriptionRenewalService() : this(new LegacyBillingGatewayAdapter(),  new CustomerRepository()){}
 
-        public SubscriptionRenewalService(IBillingGateway billingGateway)
+        public SubscriptionRenewalService(IBillingGateway billingGateway, ICustomerRepository customerRepository)
         {
             _billingGateway = billingGateway ?? throw new ArgumentNullException(nameof(billingGateway));
+            _customerRepository = customerRepository ?? throw new ArgumentNullException(nameof(customerRepository));
         }
         
         public RenewalInvoice CreateRenewalInvoice(
@@ -44,11 +56,10 @@ namespace LegacyRenewalApp
 
             string normalizedPlanCode = planCode.Trim().ToUpperInvariant();
             string normalizedPaymentMethod = paymentMethod.Trim().ToUpperInvariant();
-
-            var customerRepository = new CustomerRepository();
+            
             var planRepository = new SubscriptionPlanRepository();
 
-            var customer = customerRepository.GetById(customerId);
+            var customer = _customerRepository.GetById(customerId);
             var plan = planRepository.GetByCode(normalizedPlanCode);
 
             if (!customer.IsActive)
