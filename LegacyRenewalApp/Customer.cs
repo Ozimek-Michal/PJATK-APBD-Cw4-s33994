@@ -1,3 +1,5 @@
+using System;
+
 namespace LegacyRenewalApp
 {
     public class Customer
@@ -10,5 +12,11 @@ namespace LegacyRenewalApp
         public int YearsWithCompany { get; set; }
         public int LoyaltyPoints { get; set; }
         public bool IsActive { get; set; }
+
+        public void EnsureCanRenew()
+        {
+            if (!IsActive)
+                throw new InvalidOperationException("Inactive customers cannot renew subscriptions");
+        }
     }
 }

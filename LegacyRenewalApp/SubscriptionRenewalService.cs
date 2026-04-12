@@ -26,12 +26,29 @@ namespace LegacyRenewalApp
         private readonly ITaxRateProvider _taxRateProvider;
         private readonly IPaymentFeeCalculator _paymentFeeCalculator;
         private readonly ISupportFeeCalculator _supportFeeCalculator;
+        private readonly IMailService _mailService;
+        private readonly IInvoiceCreator _invoiceCreator;
 
-        public SubscriptionRenewalService() : this(new LegacyBillingGatewayAdapter(),  new CustomerRepository(), new SubscriptionPlanRepository(), new List<IDiscountRule>{
-            new DiscountBySegment(), new DiscountByYears(), new DiscountBySeats(), new DiscountByPoints()}, new TaxRateProvider(), new PaymentFeeCalculator(), new SupportFeeCalculator()){}
+        public SubscriptionRenewalService() : 
+            this(new LegacyBillingGatewayAdapter(),  
+                new CustomerRepository(), 
+                new SubscriptionPlanRepository(),
+                new List<IDiscountRule>
+                {
+                    new DiscountBySegment(), 
+                    new DiscountByYears(), 
+                    new DiscountBySeats(), 
+                    new DiscountByPoints()
+                }, 
+                new TaxRateProvider(), 
+                new PaymentFeeCalculator(), 
+                new SupportFeeCalculator(),
+                new MailService(new LegacyBillingGatewayAdapter()),
+                new InvoiceCreator()){}
 
         public SubscriptionRenewalService(IBillingGateway billingGateway, ICustomerRepository customerRepository, ISubsPlanRepository subsPlanRepository,  
-            IEnumerable<IDiscountRule> discountRules, ITaxRateProvider taxRateProvider,  IPaymentFeeCalculator paymentFeeCalculator, ISupportFeeCalculator supportFeeCalculator)
+            IEnumerable<IDiscountRule> discountRules, ITaxRateProvider taxRateProvider,  IPaymentFeeCalculator paymentFeeCalculator, 
+            ISupportFeeCalculator supportFeeCalculator, IMailService mailService, IInvoiceCreator invoiceCreator)
         {
             _billingGateway = billingGateway ?? throw new ArgumentNullException(nameof(billingGateway));
             _customerRepository = customerRepository ?? throw new ArgumentNullException(nameof(customerRepository));
@@ -40,6 +57,8 @@ namespace LegacyRenewalApp
             _taxRateProvider = taxRateProvider ?? throw new ArgumentNullException(nameof(taxRateProvider));
             _paymentFeeCalculator = paymentFeeCalculator ?? throw new ArgumentNullException(nameof(paymentFeeCalculator));
             _supportFeeCalculator = supportFeeCalculator ?? throw new ArgumentNullException(nameof(supportFeeCalculator));
+            _mailService = mailService ?? throw new ArgumentNullException(nameof(mailService));
+            _invoiceCreator = invoiceCreator ?? throw new ArgumentNullException(nameof(invoiceCreator));
         }
 
         public RenewalInvoice CreateRenewalInvoice(
@@ -57,10 +76,7 @@ namespace LegacyRenewalApp
             var customer = _customerRepository.GetById(request.CustomerId);
             var plan = _subsPlanRepository.GetByCode(request.NormalizedPlanCode);
 
-            if (!customer.IsActive)
-            {
-                throw new InvalidOperationException("Inactive customers cannot renew subscriptions");
-            }
+            customer.EnsureCanRenew();
 
             decimal baseAmount = (plan.MonthlyPricePerSeat * request.SeatCount * 12m) + plan.SetupFee;
             decimal discountAmount = 0m;
@@ -101,34 +117,10 @@ namespace LegacyRenewalApp
                 notes += "minimum invoice amount applied; ";
             }
 
-            var invoice = new RenewalInvoice
-            {
-                InvoiceNumber = $"INV-{DateTime.UtcNow:yyyyMMdd}-{request.CustomerId}-{request.NormalizedPlanCode}",
-                CustomerName = customer.FullName,
-                PlanCode = request.NormalizedPlanCode,
-                PaymentMethod = request.NormalizedPaymentMethod,
-                SeatCount = request.SeatCount,
-                BaseAmount = Math.Round(baseAmount, 2, MidpointRounding.AwayFromZero),
-                DiscountAmount = Math.Round(discountAmount, 2, MidpointRounding.AwayFromZero),
-                SupportFee = Math.Round(supportFee, 2, MidpointRounding.AwayFromZero),
-                PaymentFee = Math.Round(paymentFee, 2, MidpointRounding.AwayFromZero),
-                TaxAmount = Math.Round(taxAmount, 2, MidpointRounding.AwayFromZero),
-                FinalAmount = Math.Round(finalAmount, 2, MidpointRounding.AwayFromZero),
-                Notes = notes.Trim(),
-                GeneratedAt = DateTime.UtcNow
-            };
-
+            var invoice = _invoiceCreator.Create(request, customer, baseAmount, discountAmount, 
+                supportFee, paymentFee, taxAmount, finalAmount, notes);
             _billingGateway.SaveInvoice(invoice);
-
-            if (!string.IsNullOrWhiteSpace(customer.Email))
-            {
-                string subject = "Subscription renewal invoice";
-                string body =
-                    $"Hello {customer.FullName}, your renewal for plan {request.NormalizedPlanCode} " +
-                    $"has been prepared. Final amount: {invoice.FinalAmount:F2}.";
-
-                _billingGateway.SendEmail(customer.Email, subject, body);
-            }
+            _mailService.SendRenewalInvoice(customer, invoice);
 
             return invoice;
         }
