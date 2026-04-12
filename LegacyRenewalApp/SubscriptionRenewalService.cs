@@ -19,16 +19,19 @@ namespace LegacyRenewalApp
         private readonly ICustomerRepository _customerRepository;
         private readonly ISubsPlanRepository  _subsPlanRepository;
         private readonly IEnumerable<IDiscountRule> _discountRules;
+        private readonly ITaxRateProvider _taxRateProvider;
 
         public SubscriptionRenewalService() : this(new LegacyBillingGatewayAdapter(),  new CustomerRepository(), new SubscriptionPlanRepository(), new List<IDiscountRule>{
-            new DiscountBySegment(), new DiscountByYears(), new DiscountBySeats(), new DiscountByPoints()}){}
+            new DiscountBySegment(), new DiscountByYears(), new DiscountBySeats(), new DiscountByPoints()}, new TaxRateProvider()){}
 
-        public SubscriptionRenewalService(IBillingGateway billingGateway, ICustomerRepository customerRepository, ISubsPlanRepository subsPlanRepository,  IEnumerable<IDiscountRule> discountRules)
+        public SubscriptionRenewalService(IBillingGateway billingGateway, ICustomerRepository customerRepository, ISubsPlanRepository subsPlanRepository,  
+            IEnumerable<IDiscountRule> discountRules, ITaxRateProvider taxRateProvider)
         {
             _billingGateway = billingGateway ?? throw new ArgumentNullException(nameof(billingGateway));
             _customerRepository = customerRepository ?? throw new ArgumentNullException(nameof(customerRepository));
             _subsPlanRepository = subsPlanRepository ?? throw new ArgumentNullException(nameof(subsPlanRepository));
             _discountRules =  discountRules ?? throw new ArgumentNullException(nameof(discountRules));
+            _taxRateProvider = taxRateProvider ?? throw new ArgumentNullException(nameof(taxRateProvider));
         }
         
         public RenewalInvoice CreateRenewalInvoice(
@@ -133,27 +136,12 @@ namespace LegacyRenewalApp
                 throw new ArgumentException("Unsupported payment method");
             }
 
-            decimal taxRate = 0.20m;
-            if (customer.Country == "Poland")
-            {
-                taxRate = 0.23m;
-            }
-            else if (customer.Country == "Germany")
-            {
-                taxRate = 0.19m;
-            }
-            else if (customer.Country == "Czech Republic")
-            {
-                taxRate = 0.21m;
-            }
-            else if (customer.Country == "Norway")
-            {
-                taxRate = 0.25m;
-            }
+            decimal taxRate = _taxRateProvider.GetTaxRate(customer.Country);
 
             decimal taxBase = subtotalAfterDiscount + supportFee + paymentFee;
             decimal taxAmount = taxBase * taxRate;
             decimal finalAmount = taxBase + taxAmount;
+            
 
             if (finalAmount < 500m)
             {
