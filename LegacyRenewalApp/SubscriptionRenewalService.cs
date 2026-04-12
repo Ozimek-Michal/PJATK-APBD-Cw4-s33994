@@ -17,13 +17,15 @@ namespace LegacyRenewalApp
     {
         private readonly IBillingGateway _billingGateway;
         private readonly ICustomerRepository _customerRepository;
+        private readonly ISubsPlanRepository  _subsPlanRepository;
 
-        public SubscriptionRenewalService() : this(new LegacyBillingGatewayAdapter(),  new CustomerRepository()){}
+        public SubscriptionRenewalService() : this(new LegacyBillingGatewayAdapter(),  new CustomerRepository(), new SubscriptionPlanRepository()){}
 
-        public SubscriptionRenewalService(IBillingGateway billingGateway, ICustomerRepository customerRepository)
+        public SubscriptionRenewalService(IBillingGateway billingGateway, ICustomerRepository customerRepository, ISubsPlanRepository subsPlanRepository)
         {
             _billingGateway = billingGateway ?? throw new ArgumentNullException(nameof(billingGateway));
             _customerRepository = customerRepository ?? throw new ArgumentNullException(nameof(customerRepository));
+            _subsPlanRepository = subsPlanRepository ?? throw new ArgumentNullException(nameof(subsPlanRepository));
         }
         
         public RenewalInvoice CreateRenewalInvoice(
@@ -57,10 +59,8 @@ namespace LegacyRenewalApp
             string normalizedPlanCode = planCode.Trim().ToUpperInvariant();
             string normalizedPaymentMethod = paymentMethod.Trim().ToUpperInvariant();
             
-            var planRepository = new SubscriptionPlanRepository();
-
             var customer = _customerRepository.GetById(customerId);
-            var plan = planRepository.GetByCode(normalizedPlanCode);
+            var plan = _subsPlanRepository.GetByCode(normalizedPlanCode);
 
             if (!customer.IsActive)
             {
