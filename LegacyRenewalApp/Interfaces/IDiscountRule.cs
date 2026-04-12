@@ -1,5 +1,6 @@
 ﻿namespace LegacyRenewalApp.Interfaces;
 
+public record DiscountResult(decimal Amount, string Note);
 public interface IDiscountRule
 {
     DiscountResult Calculate(
@@ -8,16 +9,4 @@ public interface IDiscountRule
         int seatCount, 
         decimal baseAmount, 
         bool useLoyaltyPoints);
-}
-
-public class DiscountResult
-{
-    public decimal Amount { get; }
-    public string Note { get; }
-
-    public DiscountResult(decimal amount, string note)
-    {
-        Amount = amount;
-        Note = note;
-    }
 }
