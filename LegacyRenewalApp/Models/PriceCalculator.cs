@@ -28,45 +28,75 @@ public class PriceCalculator : IRenewalPriceCalculator
     public RenewalPrice GetRenewalPrice(RenewalRequest request, Customer customer)
     {
         var plan = _subsPlanRepository.GetByCode(request.PlanCode);   
-        decimal baseAmount = (plan.MonthlyPricePerSeat * request.SeatCount * 12m) + plan.SetupFee;
-        decimal discountAmount = 0m;
-        string notes = string.Empty;
+        var notes = new List<string>();
+        decimal Record((decimal Amount, string Note) result)
+        {
+            if (!string.IsNullOrWhiteSpace(result.Note)) 
+                notes.Add(result.Note);
+            return result.Amount;
+        }
+        
+        decimal baseAmount = CalculateBaseAmount(plan, request.SeatCount);
+        decimal discountAmount = Record(CalculateDiscounts(customer, plan, request, baseAmount));
+        
+        decimal subtotal = Record(MinimumLimit(baseAmount - discountAmount, 300m, "minimum discounted subtotal applied;"));
+        decimal supportFee = Record(CalculateSupportFee(request));
+        decimal paymentFee = Record(CalculatePaymentFee(request, subtotal + supportFee));
+       
+        decimal taxBase = subtotal + supportFee + paymentFee;
+        decimal taxAmount = taxBase * _taxRateProvider.GetTaxRate(customer.Country);
+
+        decimal finalAmount = Record(MinimumLimit(taxBase + taxAmount, 500m, "minimum invoice amount applied;"));
+
+        return new RenewalPrice(
+            baseAmount, 
+            discountAmount, 
+            supportFee, 
+            paymentFee, 
+            taxAmount, 
+            finalAmount, 
+            string.Join(" ", notes).Trim());
+    }
+    
+    private decimal CalculateBaseAmount(SubscriptionPlan plan, int seatCount)
+    {
+        return (plan.MonthlyPricePerSeat * seatCount * 12m) + plan.SetupFee;
+    }
+
+    private (decimal Amount, string Notes) CalculateDiscounts(Customer customer, SubscriptionPlan plan, RenewalRequest request, decimal baseAmount)
+    {
+        decimal totalDiscount = 0m;
+        string combinedNotes = string.Empty;
 
         foreach (var rule in _discountRules)
         {
             var result = rule.Calculate(customer, plan, request.SeatCount, baseAmount, request.UseLoyaltyPoints);
-            discountAmount += result.Amount;
-            notes += result.Note; 
-        }
-
-        decimal subtotalAfterDiscount = baseAmount - discountAmount;
-        if (subtotalAfterDiscount < 300m)
-        {
-            subtotalAfterDiscount = 300m;
-            notes += "minimum discounted subtotal applied; ";
-        }
-
-        var supportFeeResult = _supportFeeCalculator.Calculate(request.IncludePremiumSupport, request.NormalizedPlanCode);
-        decimal supportFee = supportFeeResult.Amount;
-        notes += supportFeeResult.Note;
-
-        var paymentFeeResult = _paymentFeeCalculator.Calculate(request.NormalizedPaymentMethod, subtotalAfterDiscount + supportFee);
-        decimal paymentFee = paymentFeeResult.Amount;
-        notes += paymentFeeResult.Note;
-
-        decimal taxRate = _taxRateProvider.GetTaxRate(customer.Country);
-
-        decimal taxBase = subtotalAfterDiscount + supportFee + paymentFee;
-        decimal taxAmount = taxBase * taxRate;
-        decimal finalAmount = taxBase + taxAmount;
+            totalDiscount += result.Amount;
             
-
-        if (finalAmount < 500m)
-        {
-            finalAmount = 500m;
-            notes += "minimum invoice amount applied; ";
+            if (!string.IsNullOrWhiteSpace(result.Note)) 
+                combinedNotes += result.Note.Trim() + " ";
         }
         
-        return new RenewalPrice(baseAmount, discountAmount, supportFee, paymentFee, taxAmount, finalAmount, notes.Trim());
+        return (totalDiscount, combinedNotes.Trim());
+    }
+
+    private (decimal Amount, string Note) CalculateSupportFee(RenewalRequest request)
+    {
+        var result = _supportFeeCalculator.Calculate(request.IncludePremiumSupport, request.NormalizedPlanCode);
+        return (result.Amount, result.Note?.Trim() ?? string.Empty);
+    }
+
+    private (decimal Amount, string Note) CalculatePaymentFee(RenewalRequest request, decimal currentTotal)
+    {
+        var result = _paymentFeeCalculator.Calculate(request.NormalizedPaymentMethod, currentTotal);
+        return (result.Amount, result.Note?.Trim() ?? string.Empty);
+    }
+
+    private (decimal Amount, string Note) MinimumLimit(decimal currentAmount, decimal minimumAllowed, string noteIfApplied)
+    {
+        if (currentAmount >= minimumAllowed) 
+            return (currentAmount, string.Empty);
+            
+        return (minimumAllowed, noteIfApplied);
     }
 }
