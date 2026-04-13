@@ -7,13 +7,7 @@ public class InvoiceCreator :  IInvoiceCreator
     public RenewalInvoice Create(
         RenewalRequest request, 
         Customer customer, 
-        decimal baseAmount, 
-        decimal discountAmount, 
-        decimal supportFee, 
-        decimal paymentFee, 
-        decimal taxAmount, 
-        decimal finalAmount, 
-        string notes)
+        RenewalPrice renewalPrice)
     {
         return new RenewalInvoice
         {
@@ -23,14 +17,14 @@ public class InvoiceCreator :  IInvoiceCreator
             PaymentMethod = request.NormalizedPaymentMethod,
             SeatCount = request.SeatCount,
             
-            BaseAmount = Round(baseAmount),
-            DiscountAmount = Round(discountAmount),
-            SupportFee = Round(supportFee),
-            PaymentFee = Round(paymentFee),
-            TaxAmount = Round(taxAmount),
-            FinalAmount = Round(finalAmount),
+            BaseAmount = Round(renewalPrice.BaseAmount),
+            DiscountAmount = Round(renewalPrice.DiscountAmount),
+            SupportFee = Round(renewalPrice.SupportFee),
+            PaymentFee = Round(renewalPrice.PaymentFee),
+            TaxAmount = Round(renewalPrice.TaxAmount),
+            FinalAmount = Round(renewalPrice.FinalAmount),
                 
-            Notes = notes.Trim(),
+            Notes = renewalPrice.Notes.Trim(),
             GeneratedAt = DateTime.UtcNow
         };
     }

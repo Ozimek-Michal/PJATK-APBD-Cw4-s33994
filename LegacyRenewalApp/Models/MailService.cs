@@ -3,23 +3,15 @@ namespace LegacyRenewalApp.Models;
 
 public class MailService : IMailService
 {
-    private readonly IBillingGateway _billingGateway;
-
-    public MailService(IBillingGateway billingGateway)
+    public (string Subject, string Body)? PrepareInvoiceEmail(Customer customer, RenewalInvoice invoice)
     {
-        _billingGateway = billingGateway;
-    }
-
-    public void SendRenewalInvoice(Customer customer, RenewalInvoice invoice)
-    {
-        if (string.IsNullOrWhiteSpace(customer.Email)) 
-            return;
+        if (string.IsNullOrWhiteSpace(customer.Email))
+            return null;
 
         string subject = "Subscription renewal invoice";
-        
         string body = $"Hello {customer.FullName}, your renewal for plan {invoice.PlanCode} " +
                       $"has been prepared. Final amount: {invoice.FinalAmount:F2}.";
 
-        _billingGateway.SendEmail(customer.Email, subject, body);
+        return (subject, body);
     }
 }

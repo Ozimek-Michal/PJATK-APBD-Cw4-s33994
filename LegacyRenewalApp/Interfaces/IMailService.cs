@@ -2,6 +2,6 @@
 
 public interface IMailService
 { 
-    void SendRenewalInvoice(Customer customer, RenewalInvoice invoice);
+    public (string Subject, string Body)? PrepareInvoiceEmail(Customer customer, RenewalInvoice invoice);
     
 }
